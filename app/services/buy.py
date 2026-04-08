@@ -26,8 +26,11 @@ def execute_buy(symbol: str, profile: str = "webhook1"):
         if capital < 5100:
             raise Exception("자본이 부족합니다(최소 5,100원 이상 필요).")
 
-        # 2) 실제 잔고 한도로 제한 (안전 여유 0.5%)
+        balances = upbit.get_balances()
+        print(f"[DEBUG] get_balances() = {balances}")
+
         krw = upbit.get_balance("KRW")
+        print(f"[DEBUG] get_balance('KRW') = {krw}")
         if krw is None:
             raise Exception("KRW 잔고 조회 실패")
         amount = min(capital, int(float(krw) * 0.995))
