@@ -12,17 +12,17 @@ def _round_down(value: float, decimals: int = 8) -> float:
     return math.floor(value * (10 ** decimals)) / (10 ** decimals)
 
 
-def execute_buy(symbol: str):
+def execute_buy(symbol: str, profile: str = "webhook1"):
     """
-    - 자본(get_capital) 기준으로 예산(amount) 계산
+    - profile별 자본(get_capital(profile)) 기준으로 예산(amount) 계산
     - 중복 진입 방지: 평가금액 ≥ 1,000원이면 스킵
-    - 시장가 매수 후 평균 체결가와 총 체결수량만 state에 저장
+    - 시장가 매수 후 평균 체결가와 총 체결수량만 state에 저장(profile별)
     """
     try:
         upbit = get_upbit_client()
 
-        # 1) 자본 기반 예산 산출
-        capital = int(get_capital())
+        # 1) 자본 기반 예산 산출 (webhook2는 항상 INITIAL_CAPITAL)
+        capital = int(get_capital(profile))
         if capital < 5100:
             raise Exception("자본이 부족합니다(최소 5,100원 이상 필요).")
 
@@ -44,7 +44,7 @@ def execute_buy(symbol: str):
 
         # 4) 시장가 매수
         result = upbit.buy_market_order(symbol, amount)
-        print(f"[BUY] {symbol} 시장가 매수 요청: {result}")
+        print(f"[BUY] ({profile}) {symbol} 시장가 매수 요청: {result}")
 
         uuid = result.get("uuid") if result else None
         if not uuid:
@@ -71,14 +71,14 @@ def execute_buy(symbol: str):
         entry_price = total_cost / total_vol
         total_volume = _round_down(total_vol)
 
-        # 6) 상태 저장 (TP 없이 진입가/전체 수량만)
-        set_buy_state(symbol, entry_price, total_volume)
+        # 6) 상태 저장 (profile별)
+        set_buy_state(profile, symbol, entry_price, total_volume)
 
-        print(f"[BUY DONE] {symbol} avg={entry_price}, vol={total_volume}")
+        print(f"[BUY DONE] ({profile}) {symbol} avg={entry_price}, vol={total_volume}")
         return {"status": "ok", "entry_price": entry_price, "volume": total_volume}
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"[BUY ERROR] {symbol}: {e}")
+        print(f"[BUY ERROR] ({profile}) {symbol}: {e}")
         return {"status": "error", "message": str(e)}

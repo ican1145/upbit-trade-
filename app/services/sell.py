@@ -26,34 +26,31 @@ def _avg_price_from_trades(trades):
     return cost / vol, vol
 
 
-def execute_sell_all(symbol: str):
+def execute_sell_all(symbol: str, profile: str = "webhook1"):
     """
-    - state에 저장된 진입가/보유수량 기반으로 실현손익 계산
-    - 시장가로 전량 매도 시도 (부분 체결 시 체결분만 PnL 반영)
-    - PnL = (매도수익*(1-FEE_SELL)) - (매수원가*(1+FEE_BUY))
-    - apply_pnl()로 자본 업데이트 → 다음 매매에 복리 반영
+    - profile별 state에서 진입가/보유수량 사용
+    - 시장가 전량 매도
+    - PnL 계산은 하되, webhook2는 apply_pnl이 무시됨(고정자본)
     """
     try:
         upbit = get_upbit_client()
 
-        total_volume = float(get_total_volume(symbol))
+        total_volume = float(get_total_volume(profile, symbol))
         if total_volume <= 0:
-            print(f"[SELL] {symbol} 보유 수량 없음")
+            print(f"[SELL] ({profile}) {symbol} 보유 수량 없음")
             return None
 
-        entry_price = float(get_entry_price(symbol))
+        entry_price = float(get_entry_price(profile, symbol))
         if entry_price <= 0:
             raise Exception("진입가가 유효하지 않습니다.")
 
-        # 1) 시장가 전량 매도
         sell_res = upbit.sell_market_order(symbol, total_volume)
-        print(f"[SELL] {symbol} 시장가 청산 요청: vol={total_volume}, res={sell_res}")
+        print(f"[SELL] ({profile}) {symbol} 시장가 청산 요청: vol={total_volume}, res={sell_res}")
 
         uuid = sell_res.get("uuid") if sell_res else None
         if not uuid:
             raise Exception("매도 응답에 UUID가 없습니다.")
 
-        # 2) 체결 상세 조회
         time.sleep(0.5)
         order = upbit.get_order(uuid)
         trades = order.get("trades", [])
@@ -63,15 +60,14 @@ def execute_sell_all(symbol: str):
         if executed_vol <= 0 or avg_sell is None:
             raise Exception("매도 체결 정보가 없습니다.")
 
-        # 3) 실현손익 계산 (부분 체결도 안전하게 처리)
         buy_cost     = entry_price * executed_vol * (1.0 + FEE_BUY)
         sell_revenue = (avg_sell   * executed_vol) * (1.0 - FEE_SELL)
         pnl = sell_revenue - buy_cost
 
-        # 4) 자본 업데이트 (복리)
-        apply_pnl(pnl)
+        # webhook1만 자본에 반영 / webhook2는 무시됨
+        apply_pnl(pnl, profile)
 
-        print(f"[PNL] {symbol} realized={pnl:.2f}원  "
+        print(f"[PNL] ({profile}) {symbol} realized={pnl:.2f}원  "
               f"(buy_cost={buy_cost:.2f}, sell_revenue={sell_revenue:.2f}, "
               f"exec_vol={executed_vol}, avg_sell={avg_sell})")
 
@@ -84,5 +80,5 @@ def execute_sell_all(symbol: str):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"[SELL ERROR] {symbol}: {e}")
+        print(f"[SELL ERROR] ({profile}) {symbol}: {e}")
         return None
